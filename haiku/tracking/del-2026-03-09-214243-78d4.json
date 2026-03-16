@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del-2026-03-09-214243-78d4",
+  "envelope_id": "env-2026-03-09-214021-169c",
+  "thread_id": "wi-2026-03-09-mailbox-client-skill-review",
+  "work_item_id": "wi-2026-03-09-mailbox-client-skill-review",
+  "sender": "kimi",
+  "recipient": "jabari",
+  "delivered_ts": "2026-03-09T21:42:43+00:00",
+  "ack_due_ts": "2026-03-09T21:47:43+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-09T21:42:58+00:00",
+  "last_ping_ts": "2026-03-09T21:42:43+00:00",
+  "reping_count": 0,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

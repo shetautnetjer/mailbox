@@ -1,0 +1,46 @@
+# Database files
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Agent data (runtime)
+agents/*/inbox/*.json
+agents/*/outbox/*.json
+agents/*/received/*.json
+agents/*/responses/*.json
+intake/pending/*.json
+ledger/daily/*.jsonl
+ledger/*.jsonl
+ledger/*.sqlite
+work_items/*.json
+
+# Keep structure with .gitkeep
+!**/.gitkeep
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Additional runtime data
+agents/haiku/violations/*.json
+agents/haiku/tracking/*.json
+ledger/escalations/*.jsonl
+ledger/repings/*.jsonl
+ledger/timeouts/*.jsonl
+ledger/.ingest_state.json

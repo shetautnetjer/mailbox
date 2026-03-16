@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd71c-4928-7978-8521-4183c61e7a9c",
+  "envelope_id": "env_019cd71b-d625-77d5-b4a0-a8eceaf7399d",
+  "thread_id": "wi-2026-03-10-observer-live-test",
+  "work_item_id": "wi-2026-03-10-observer-live-test",
+  "sender": "jabari",
+  "recipient": "tariq",
+  "delivered_ts": "2026-03-10T09:38:01+00:00",
+  "ack_due_ts": "2026-03-10T09:43:01+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-10T09:41:24+00:00",
+  "last_ping_ts": "2026-03-10T09:38:01+00:00",
+  "reping_count": 0,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

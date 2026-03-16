@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del-2026-03-09-021150-9214",
+  "envelope_id": "env-2026-03-09-021150-3354",
+  "thread_id": "wi-ping-test-001",
+  "work_item_id": "wi-ping-test-001",
+  "sender": "jabari",
+  "recipient": "tariq",
+  "delivered_ts": "2026-03-09T02:11:50+00:00",
+  "ack_due_ts": "2026-03-09T02:29:43+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-09T07:14:23+00:00",
+  "last_ping_ts": "2026-03-09T02:24:43+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

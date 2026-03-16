@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd96d-2a84-7bdd-80c2-84a195231a07",
+  "envelope_id": "env_019cd96c-3732-7705-8a14-e8dc083e47af",
+  "thread_id": "wi-2026-03-10-observer-thinking-fix",
+  "work_item_id": "wi-2026-03-10-observer-thinking-fix",
+  "sender": "jabari",
+  "recipient": "tariq",
+  "delivered_ts": "2026-03-10T20:25:36+00:00",
+  "ack_due_ts": "2026-03-10T20:41:44+00:00",
+  "ack_status": "escalated",
+  "ack_ts": null,
+  "last_ping_ts": "2026-03-10T20:37:16+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": null
+}

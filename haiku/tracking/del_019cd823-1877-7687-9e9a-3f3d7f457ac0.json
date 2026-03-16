@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd823-1877-7687-9e9a-3f3d7f457ac0",
+  "envelope_id": "env_019cd821-fd53-73e2-a06e-decf14fbc813",
+  "thread_id": "wi-2026-03-10-brainframe-memory-index",
+  "work_item_id": "wi-2026-03-10-brainframe-memory-index",
+  "sender": "jabari",
+  "recipient": "tariq",
+  "delivered_ts": "2026-03-10T14:25:04+00:00",
+  "ack_due_ts": "2026-03-10T14:30:04+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-10T14:26:45+00:00",
+  "last_ping_ts": "2026-03-10T14:25:04+00:00",
+  "reping_count": 0,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

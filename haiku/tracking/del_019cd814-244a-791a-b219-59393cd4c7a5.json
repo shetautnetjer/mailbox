@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd814-244a-791a-b219-59393cd4c7a5",
+  "envelope_id": "env_019cd812-b067-759d-908f-dcf7ef6fcd7a",
+  "thread_id": "wi-2026-03-10-research-request",
+  "work_item_id": "wi-2026-03-10-research-request",
+  "sender": "jabari",
+  "recipient": "heru",
+  "delivered_ts": "2026-03-10T14:08:44+00:00",
+  "ack_due_ts": "2026-03-10T14:25:44+00:00",
+  "ack_status": "escalated",
+  "ack_ts": null,
+  "last_ping_ts": "2026-03-10T14:20:44+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": null
+}

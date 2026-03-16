@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd99d-d16f-72ef-90a0-d9bdc3f75978",
+  "envelope_id": "env_019cd99c-cc88-75b2-b9fb-377afcb1140d",
+  "thread_id": "wi-2026-03-10-v4-plane-b-promotion",
+  "work_item_id": "wi-2026-03-10-v4-plane-b-promotion",
+  "sender": "kimi",
+  "recipient": "jabari",
+  "delivered_ts": "2026-03-10T21:18:44+00:00",
+  "ack_due_ts": "2026-03-10T21:39:09+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-11T02:36:09+00:00",
+  "last_ping_ts": "2026-03-10T21:34:09+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

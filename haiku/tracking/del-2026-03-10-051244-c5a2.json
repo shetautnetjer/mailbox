@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del-2026-03-10-051244-c5a2",
+  "envelope_id": "env-2026-03-10-051137-6a98",
+  "thread_id": "wi-2026-03-09-brain-frame-normalization",
+  "work_item_id": "wi-2026-03-09-brain-frame-normalization",
+  "sender": "jabari",
+  "recipient": "arbiter",
+  "delivered_ts": "2026-03-10T05:12:44+00:00",
+  "ack_due_ts": "2026-03-10T05:29:44+00:00",
+  "ack_status": "escalated",
+  "ack_ts": null,
+  "last_ping_ts": "2026-03-10T05:24:44+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": null
+}

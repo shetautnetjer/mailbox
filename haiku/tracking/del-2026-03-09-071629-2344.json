@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del-2026-03-09-071629-2344",
+  "envelope_id": "env-2026-03-09-071629-8374",
+  "thread_id": "wi-2026-03-09-kimi-health-check",
+  "work_item_id": "wi-2026-03-09-kimi-health-check",
+  "sender": "jabari",
+  "recipient": "kimi",
+  "delivered_ts": "2026-03-09T07:16:29+00:00",
+  "ack_due_ts": "2026-03-09T07:21:29+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-09T07:20:16+00:00",
+  "last_ping_ts": "2026-03-09T07:16:29+00:00",
+  "reping_count": 0,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

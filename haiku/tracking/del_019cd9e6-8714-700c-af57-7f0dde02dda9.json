@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd9e6-8714-700c-af57-7f0dde02dda9",
+  "envelope_id": "env_019cd9e5-4c50-721d-8a4f-5d26d6d2b948",
+  "thread_id": "wi-2026-03-10-lancedb-migration-decision",
+  "work_item_id": "wi-2026-03-10-lancedb-migration-decision",
+  "sender": "kimi",
+  "recipient": "arbiter",
+  "delivered_ts": "2026-03-10T22:38:09+00:00",
+  "ack_due_ts": "2026-03-10T22:55:09+00:00",
+  "ack_status": "escalated",
+  "ack_ts": null,
+  "last_ping_ts": "2026-03-10T22:50:09+00:00",
+  "reping_count": 2,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": true,
+  "receipt_path": null
+}

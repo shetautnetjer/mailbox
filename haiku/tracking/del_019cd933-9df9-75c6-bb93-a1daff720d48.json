@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd933-9df9-75c6-bb93-a1daff720d48",
+  "envelope_id": "env_019cd932-39ed-747a-af80-60935d763b99",
+  "thread_id": "wi-2026-03-10-v4-harness-plane-b-review",
+  "work_item_id": "wi-2026-03-10-v4-harness-plane-b-review",
+  "sender": "kimi",
+  "recipient": "jabari",
+  "delivered_ts": "2026-03-10T19:22:44+00:00",
+  "ack_due_ts": "2026-03-10T19:27:44+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-10T19:23:04+00:00",
+  "last_ping_ts": "2026-03-10T19:22:44+00:00",
+  "reping_count": 0,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

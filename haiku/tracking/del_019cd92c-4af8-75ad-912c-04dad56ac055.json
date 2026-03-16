@@ -1,0 +1,22 @@
+{
+  "delivery_id": "del_019cd92c-4af8-75ad-912c-04dad56ac055",
+  "envelope_id": "env_019cd92a-c4e1-703a-876e-ef20a2c28f35",
+  "thread_id": "wi-2026-03-10-brainframe-orientation",
+  "work_item_id": "wi-2026-03-10-brainframe-orientation",
+  "sender": "jabari",
+  "recipient": "kimi",
+  "delivered_ts": "2026-03-10T19:14:44+00:00",
+  "ack_due_ts": "2026-03-10T19:25:44+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-10T19:21:11+00:00",
+  "last_ping_ts": "2026-03-10T19:20:44+00:00",
+  "reping_count": 1,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": "/home/netjer/.openclaw/workspace/plane-a/mailbox/ledger/receipts.jsonl"
+}

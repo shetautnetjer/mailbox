@@ -1,0 +1,23 @@
+{
+  "delivery_id": "del-2026-03-09-173243-3287",
+  "envelope_id": "env-2026-03-09-173159-ab0a",
+  "thread_id": "wi-2026-03-09-arch-pack-review",
+  "work_item_id": "wi-2026-03-09-arch-pack-review",
+  "sender": "jabari",
+  "recipient": "tariq",
+  "delivered_ts": "2026-03-09T17:32:43+00:00",
+  "ack_due_ts": "2026-03-09T17:43:47+00:00",
+  "ack_status": "acked",
+  "ack_ts": "2026-03-09T17:32:43+00:00",
+  "last_ping_ts": "2026-03-09T17:38:47+00:00",
+  "reping_count": 1,
+  "max_repings": 2,
+  "reping_interval_s": 300,
+  "notify_on_delivery": true,
+  "notify_on_ack": true,
+  "notify_on_timeout": true,
+  "escalation_target": "aya",
+  "escalated": false,
+  "receipt_path": null,
+  "note": "duplicate tracker \u2014 sibling del-2026-03-09-173223-00d2 has the real receipt"
+}
