@@ -11,6 +11,7 @@ from mailbox_core import (
     TRACKER_SCHEMA_VERSION,
     MailboxPaths,
     append_jsonl,
+    mailbox_event,
     notifier_attempt,
     normalize_notifier_mode,
     ensure_mailbox_layout,
@@ -40,6 +41,12 @@ def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts:
     tracker = {
         "schema_version": TRACKER_SCHEMA_VERSION,
         "component": "haiku_mailman",
+        "event_family": "comms/delivery",
+        "state_class": "delivery_state",
+        "trust_plane": env.get("trust_plane", "plane-a"),
+        "provenance_writer": "haiku_mailman",
+        "notify_mode": None,
+        "adapter": None,
         "delivery_id": gen_delivery_id(),
         "envelope_id": env["envelope_id"],
         "thread_id": env.get("thread_id", env.get("work_item_id")),
@@ -80,28 +87,34 @@ def notify_delivery(paths: MailboxPaths, tracker_path: Path | None, env: dict, r
     if tracker_path and tracker_path.exists():
         tracker = read_json(tracker_path)
         tracker["last_ping_ts"] = ts
-        tracker["live_notify_state"] = "nudge_attempted"
+        tracker["notify_mode"] = notifier_mode
+        tracker["adapter"] = notify_result.get("adapter")
+        tracker["live_notify_state"] = "nudge_sent" if notify_result.get("ok") else "nudge_failed"
         tracker["live_notify"] = notify_result
         write_json(tracker_path, tracker)
         delivery_id = tracker["delivery_id"]
 
     append_jsonl(
         paths.deliveries_jsonl,
-        {
-            "event_type": "AGENT_TURN_NUDGE_ATTEMPTED",
-            "ts": ts,
-            "component": "haiku_mailman",
-            "adapter": "openclaw-agent-cli",
-            "semantic_layer": "live_notify",
-            "delivery_truth": False,
-            "delivery_id": delivery_id,
-            "envelope_id": env["envelope_id"],
-            "recipient": recipient,
-            "message": message,
-            "notify_mode": notifier_mode,
-            "ok": notify_result.get("ok", False),
-            "notify_result": notify_result,
-        },
+        mailbox_event(
+            component="haiku_mailman",
+            event_type="AGENT_TURN_NUDGE_ATTEMPT",
+            event_family="comms/live-notify",
+            state_class="live_notify_state",
+            ts=ts,
+            delivery_truth=False,
+            delivery_id=delivery_id,
+            envelope_id=env["envelope_id"],
+            thread_id=env.get("thread_id", env.get("work_item_id")),
+            work_item_id=env.get("work_item_id"),
+            sender=env.get("from"),
+            recipient=recipient,
+            message=message,
+            notify_mode=notifier_mode,
+            adapter=notify_result.get("adapter"),
+            ok=notify_result.get("ok", False),
+            notify_result=notify_result,
+        ),
     )
 
 
@@ -116,33 +129,48 @@ def deliver_to_recipient(paths: MailboxPaths, env_path: Path, env: dict, recipie
     tracker_path = create_tracker(paths, env, recipient, delivered_ts)
     receipt_id = gen_receipt_id()
 
+    delivery_id = read_json(tracker_path)["delivery_id"] if tracker_path else None
+
     append_jsonl(
         paths.deliveries_jsonl,
-        {
-            "event_type": "DELIVERY_CONFIRMED",
-            "ts": delivered_ts,
-            "delivery_id": read_json(tracker_path)["delivery_id"] if tracker_path else None,
-            "event_id": env.get("event_id", gen_event_id()),
-            "envelope_id": env["envelope_id"],
-            "sender": env["from"],
-            "recipient": recipient,
-            "work_item_id": env.get("work_item_id"),
-        },
+        mailbox_event(
+            component="haiku_mailman",
+            event_type="DELIVERY_CONFIRMED",
+            event_family="comms/delivery",
+            state_class="delivery_state",
+            ts=delivered_ts,
+            delivery_truth=True,
+            delivery_id=delivery_id,
+            event_id=env.get("event_id", gen_event_id()),
+            envelope_id=env["envelope_id"],
+            thread_id=env.get("thread_id", env.get("work_item_id")),
+            work_item_id=env.get("work_item_id"),
+            sender=env["from"],
+            recipient=recipient,
+            delivery_state="durably_delivered",
+            ack_state="pending" if tracker_path else "not_applicable",
+            live_notify_state="not_attempted",
+        ),
     )
 
     append_jsonl(
         paths.receipts_jsonl,
-        {
-            "event_type": "DELIVERY_RECEIPT",
-            "ts": delivered_ts,
-            "receipt_id": receipt_id,
-            "envelope_id": env["envelope_id"],
-            "delivery_observed_by": "haiku_mailman",
-            "from_agent": env["from"],
-            "receiver": recipient,
-            "work_item_id": env.get("work_item_id"),
-            "kind": "inbox_copy_observed",
-        },
+        mailbox_event(
+            component="haiku_mailman",
+            event_type="DELIVERY_RECEIPT",
+            event_family="comms/delivery",
+            state_class="delivery_state",
+            ts=delivered_ts,
+            receipt_id=receipt_id,
+            delivery_id=delivery_id,
+            envelope_id=env["envelope_id"],
+            thread_id=env.get("thread_id", env.get("work_item_id")),
+            work_item_id=env.get("work_item_id"),
+            sender=env["from"],
+            recipient=recipient,
+            delivery_observed_by="haiku_mailman",
+            kind="inbox_copy_observed",
+        ),
     )
 
     if tracker_path and tracker_path.exists():
@@ -158,16 +186,19 @@ def quarantine(paths: MailboxPaths, env_path: Path, env: dict, reason: str) -> N
     shutil.move(str(env_path), str(dest))
     append_jsonl(
         paths.violations_jsonl,
-        {
-            "event": "QUARANTINED",
-            "ts": now_iso(),
-            "envelope_id": env.get("envelope_id"),
-            "from": env.get("from"),
-            "to": env.get("to"),
-            "work_item_id": env.get("work_item_id"),
-            "violation_type": "INVALID_ENVELOPE",
-            "reason": reason,
-        },
+        mailbox_event(
+            component="haiku_mailman",
+            event_type="QUARANTINED",
+            event_family="comms/violation",
+            state_class="violation_state",
+            envelope_id=env.get("envelope_id"),
+            thread_id=env.get("thread_id", env.get("work_item_id")),
+            work_item_id=env.get("work_item_id"),
+            sender=env.get("from"),
+            recipient=env.get("to"),
+            violation_type="INVALID_ENVELOPE",
+            reason=reason,
+        ),
     )
 
 
@@ -213,19 +244,28 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None, notifier_mo
                 f"Please check inbox/acks. Work item: {tracker['work_item_id']}"
             )
             notify_result = notifier_attempt(mode=notifier_mode, agent=tracker["recipient"], message=msg, openclaw_bin=openclaw_bin)
+            tracker["notify_mode"] = notifier_mode
+            tracker["adapter"] = notify_result.get("adapter")
+            tracker["live_notify_state"] = "nudge_sent" if notify_result.get("ok") else "nudge_failed"
             append_jsonl(
                 paths.repings_jsonl,
-                {
-                    "event_type": "ACK_REPING_SENT",
-                    "ts": now_iso(),
-                    "delivery_id": tracker["delivery_id"],
-                    "envelope_id": tracker["envelope_id"],
-                    "recipient": tracker["recipient"],
-                    "reping_count": tracker["reping_count"],
-                    "notify_mode": notifier_mode,
-                    "notify_ok": notify_result.get("ok", False),
-                    "notify_result": notify_result,
-                },
+                mailbox_event(
+                    component="haiku_mailman",
+                    event_type="ACK_REPING_SENT",
+                    event_family="comms/live-notify",
+                    state_class="live_notify_state",
+                    delivery_id=tracker["delivery_id"],
+                    envelope_id=tracker["envelope_id"],
+                    thread_id=tracker.get("thread_id"),
+                    work_item_id=tracker["work_item_id"],
+                    sender=tracker.get("sender"),
+                    recipient=tracker["recipient"],
+                    reping_count=tracker["reping_count"],
+                    notify_mode=notifier_mode,
+                    adapter=notify_result.get("adapter"),
+                    notify_ok=notify_result.get("ok", False),
+                    notify_result=notify_result,
+                ),
             )
             tracker["ack_due_ts"] = (
                 parse_iso(now_iso()) + timedelta(seconds=tracker["reping_interval_s"])
@@ -234,19 +274,24 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None, notifier_mo
             continue
 
         tracker["ack_state"] = "timed_out"
-        tracker["ack_status"] = "timed_out"
         tracker["ack_ts"] = now_iso()
         write_json(tracker_path, tracker)
         append_jsonl(
             paths.timeouts_jsonl,
-            {
-                "event_type": "ACK_TIMEOUT",
-                "ts": now_iso(),
-                "delivery_id": tracker["delivery_id"],
-                "envelope_id": tracker["envelope_id"],
-                "recipient": tracker["recipient"],
-                "work_item_id": tracker["work_item_id"],
-            },
+            mailbox_event(
+                component="haiku_mailman",
+                event_type="ACK_TIMEOUT",
+                event_family="comms/timeout",
+                state_class="ack_state",
+                delivery_id=tracker["delivery_id"],
+                envelope_id=tracker["envelope_id"],
+                thread_id=tracker.get("thread_id"),
+                work_item_id=tracker["work_item_id"],
+                sender=tracker.get("sender"),
+                recipient=tracker["recipient"],
+                ack_state=tracker["ack_state"],
+                live_notify_state=tracker.get("live_notify_state"),
+            ),
         )
 
         escalation_target = tracker.get("escalation_target")
@@ -258,17 +303,24 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None, notifier_mo
             notify_result = notifier_attempt(mode=notifier_mode, agent=escalation_target, message=msg, openclaw_bin=openclaw_bin)
             append_jsonl(
                 paths.escalations_jsonl,
-                {
-                    "event_type": "ACK_ESCALATION",
-                    "ts": now_iso(),
-                    "delivery_id": tracker["delivery_id"],
-                    "envelope_id": tracker["envelope_id"],
-                    "recipient": tracker["recipient"],
-                    "escalation_target": escalation_target,
-                    "notify_mode": notifier_mode,
-                    "notify_ok": notify_result.get("ok", False),
-                    "notify_result": notify_result,
-                },
+                mailbox_event(
+                    component="haiku_mailman",
+                    event_type="ACK_ESCALATION",
+                    event_family="comms/escalation",
+                    state_class="ack_state",
+                    delivery_id=tracker["delivery_id"],
+                    envelope_id=tracker["envelope_id"],
+                    thread_id=tracker.get("thread_id"),
+                    work_item_id=tracker["work_item_id"],
+                    sender=tracker.get("sender"),
+                    recipient=tracker["recipient"],
+                    escalation_target=escalation_target,
+                    ack_state=tracker.get("ack_state"),
+                    notify_mode=notifier_mode,
+                    adapter=notify_result.get("adapter"),
+                    notify_ok=notify_result.get("ok", False),
+                    notify_result=notify_result,
+                ),
             )
             tracker["escalated"] = True
             write_json(tracker_path, tracker)
@@ -282,13 +334,15 @@ def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None, notifier
             except Exception as exc:
                 append_jsonl(
                     paths.violations_jsonl,
-                    {
-                        "event": "PROCESSING_ERROR",
-                        "ts": now_iso(),
-                        "envelope_id": env_path.stem,
-                        "reason": str(exc),
-                        "violation_type": "ROUTING_ERROR",
-                    },
+                    mailbox_event(
+                        component="haiku_mailman",
+                        event_type="PROCESSING_ERROR",
+                        event_family="comms/violation",
+                        state_class="violation_state",
+                        envelope_id=env_path.stem,
+                        violation_type="ROUTING_ERROR",
+                        reason=str(exc),
+                    ),
                 )
         scan_pending_acks(paths, openclaw_bin, notifier_mode)
         if once:

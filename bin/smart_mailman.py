@@ -36,6 +36,7 @@ from mailbox_core import (
     append_jsonl,
     ensure_mailbox_layout,
     envelope_recipients,
+    mailbox_event,
     normalize_notifier_mode,
     notifier_attempt,
     now_iso,
@@ -112,15 +113,16 @@ class SessionAwareMailman:
             self.cache_timestamp = datetime.now(timezone.utc)
             append_jsonl(
                 self.paths.ledger / "session_discovery.jsonl",
-                {
-                    "ts": now_iso(),
-                    "event_type": "SESSION_DISCOVERY",
-                    "component": "smart_mailman",
-                    "semantic_layer": "discovery",
-                    "active_minutes": self.active_minutes,
-                    "agents_recently_active": sorted(self.session_cache.keys()),
-                    "count": len(self.session_cache),
-                },
+                mailbox_event(
+                    component="smart_mailman",
+                    event_type="SESSION_DISCOVERY",
+                    event_family="comms/session-discovery",
+                    state_class="live_notify_state",
+                    semantic_layer="discovery",
+                    active_minutes=self.active_minutes,
+                    agents_recently_active=sorted(self.session_cache.keys()),
+                    count=len(self.session_cache),
+                ),
             )
             return self.session_cache
         except Exception as e:
@@ -168,15 +170,27 @@ class SessionAwareMailman:
             discovery=discovery,
             timeout_s=timeout,
         )
+        result_payload = dict(result)
+        result_payload.pop("component", None)
+        result_payload.pop("event_family", None)
+        result_payload.pop("state_class", None)
+        result_payload.pop("trust_plane", None)
+        result_payload.pop("provenance_writer", None)
         append_jsonl(
             self.paths.ledger / "live_notify.jsonl",
-            {
-                "ts": now_iso(),
-                "event_type": "LIVE_NOTIFY_ATTEMPT",
-                "component": "smart_mailman",
-                "semantic_layer": "live_notify",
-                **result,
-            },
+            mailbox_event(
+                component="smart_mailman",
+                event_type="LIVE_NOTIFY_ATTEMPT",
+                event_family="comms/live-notify",
+                state_class="live_notify_state",
+                semantic_layer="live_notify",
+                notify_mode=result.get("mode"),
+                adapter=result.get("adapter"),
+                delivery_truth=False,
+                sender=None,
+                recipient=agent,
+                **result_payload,
+            ),
         )
         return result
 
@@ -226,6 +240,12 @@ class SessionAwareMailman:
         tracker = {
             "schema_version": TRACKER_SCHEMA_VERSION,
             "component": "smart_mailman",
+            "event_family": "comms/delivery",
+            "state_class": "delivery_state",
+            "trust_plane": env.get("trust_plane", "plane-a"),
+            "provenance_writer": "smart_mailman",
+            "notify_mode": live_notify.get("mode"),
+            "adapter": live_notify.get("adapter"),
             "delivery_id": gen_delivery_id(),
             "envelope_id": env["envelope_id"],
             "thread_id": env.get("thread_id", env.get("work_item_id")),
@@ -249,21 +269,26 @@ class SessionAwareMailman:
 
         append_jsonl(
             self.paths.deliveries_jsonl,
-            {
-                "event_type": "DELIVERY_CONFIRMED",
-                "ts": delivered_ts,
-                "component": "smart_mailman",
-                "semantic_layer": "durable_delivery",
-                "delivery_truth": True,
-                "delivery_id": tracker["delivery_id"],
-                "envelope_id": env["envelope_id"],
-                "sender": env["from"],
-                "recipient": recipient,
-                "work_item_id": env.get("work_item_id"),
-                "delivery_state": tracker["delivery_state"],
-                "ack_state": tracker["ack_state"],
-                "live_notify_state": tracker["live_notify_state"],
-            },
+            mailbox_event(
+                component="smart_mailman",
+                event_type="DELIVERY_CONFIRMED",
+                event_family="comms/delivery",
+                state_class="delivery_state",
+                ts=delivered_ts,
+                semantic_layer="durable_delivery",
+                delivery_truth=True,
+                delivery_id=tracker["delivery_id"],
+                envelope_id=env["envelope_id"],
+                thread_id=env.get("thread_id", env.get("work_item_id")),
+                work_item_id=env.get("work_item_id"),
+                sender=env["from"],
+                recipient=recipient,
+                notify_mode=tracker.get("notify_mode"),
+                adapter=tracker.get("adapter"),
+                delivery_state=tracker["delivery_state"],
+                ack_state=tracker["ack_state"],
+                live_notify_state=tracker["live_notify_state"],
+            ),
         )
         return {
             "recipient": recipient,

@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 NOTIFIER_MODES = {"none", "discover-only", "agent-turn-nudge"}
-TRACKER_SCHEMA_VERSION = "mailbox-tracker-v2"
+TRACKER_SCHEMA_VERSION = "mailbox-tracker-v3"
+EVENT_SCHEMA_VERSION = "mailbox-event-v1"
 
 DEFAULT_AGENT_NAMES = ["aya", "arbiter", "haiku", "heru", "jabari", "kimi", "tariq"]
 VALID_TYPES = {"task", "response"}
@@ -197,6 +198,33 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def mailbox_event(
+    *,
+    component: str,
+    event_type: str,
+    event_family: str,
+    state_class: str,
+    trust_plane: str = "plane-a",
+    provenance_writer: str | None = None,
+    tags: list[str] | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "component": component,
+        "event_type": event_type,
+        "event_family": event_family,
+        "state_class": state_class,
+        "trust_plane": trust_plane,
+        "provenance_writer": provenance_writer or component,
+        "ts": fields.pop("ts", now_iso()),
+    }
+    record.update(fields)
+    if tags:
+        record["tags"] = tags
+    return record
+
+
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -278,6 +306,10 @@ def agent_turn_nudge(agent: str, message: str, openclaw_bin: str | None, timeout
         "ok": False,
         "mode": "agent-turn-nudge",
         "component": "mailbox_core",
+        "event_family": "comms/live-notify",
+        "state_class": "live_notify_state",
+        "trust_plane": "plane-a",
+        "provenance_writer": "mailbox_core",
         "adapter": "openclaw-agent-cli",
         "semantic_layer": "live_notify",
         "delivery_truth": False,
@@ -329,6 +361,10 @@ def notifier_attempt(
     base: dict[str, Any] = {
         "mode": mode,
         "component": "mailbox_core",
+        "event_family": "comms/live-notify",
+        "state_class": "live_notify_state",
+        "trust_plane": "plane-a",
+        "provenance_writer": "mailbox_core",
         "semantic_layer": "live_notify",
         "agent": agent,
         "delivery_truth": False,
@@ -345,4 +381,5 @@ def notifier_attempt(
 
 
 def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:
+    """Legacy compatibility wrapper. Prefer notifier_attempt()/agent_turn_nudge()."""
     return bool(agent_turn_nudge(agent, message, openclaw_bin).get("ok"))

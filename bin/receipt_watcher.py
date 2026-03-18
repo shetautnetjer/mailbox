@@ -8,6 +8,7 @@ from pathlib import Path
 from mailbox_core import (
     MailboxPaths,
     append_jsonl,
+    mailbox_event,
     notifier_attempt,
     normalize_notifier_mode,
     ensure_mailbox_layout,
@@ -35,22 +36,32 @@ def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | No
     envelope_id = ack["envelope_id"]
     tracker_path, tracker = find_tracker(paths, envelope_id, recipient)
 
+    ack_state = "acked" if ack.get("status") == "accepted" else "rejected"
     append_jsonl(
         paths.acks_jsonl,
-        {
-            "event_type": "ACK_CONFIRMED",
-            "ts": now_iso(),
-            "ack_id": ack.get("ack_id"),
-            "envelope_id": envelope_id,
-            "receiver": recipient,
-            "status": ack.get("status", "accepted"),
-            "reason": ack.get("reason", ""),
-        },
+        mailbox_event(
+            component="receipt_watcher",
+            event_type="ACK_RECORDED",
+            event_family="comms/ack",
+            state_class="ack_state",
+            ack_id=ack.get("ack_id"),
+            delivery_id=tracker.get("delivery_id") if tracker else None,
+            envelope_id=envelope_id,
+            thread_id=tracker.get("thread_id") if tracker else None,
+            work_item_id=tracker.get("work_item_id") if tracker else ack.get("work_item_id"),
+            sender=tracker.get("sender") if tracker else None,
+            recipient=recipient,
+            ack_state=ack_state,
+            status=ack.get("status", "accepted"),
+            reason=ack.get("reason", ""),
+        ),
     )
 
     if tracker_path and tracker:
-        tracker["ack_state"] = "acked" if ack.get("status") == "accepted" else "rejected"
-        tracker["ack_status"] = tracker["ack_state"]
+        tracker["event_family"] = tracker.get("event_family", "comms/delivery")
+        tracker["state_class"] = tracker.get("state_class", "delivery_state")
+        tracker["provenance_writer"] = "receipt_watcher"
+        tracker["ack_state"] = ack_state
         tracker["ack_ts"] = ack.get("received_ts", now_iso())
         write_json(tracker_path, tracker)
 
@@ -62,7 +73,9 @@ def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | No
                 else:
                     msg = f"❌ Ack received: {recipient} rejected {envelope_id} ({ack.get('reason', '')})"
                 notify_result = notifier_attempt(mode=notifier_mode, agent=sender, message=msg, openclaw_bin=openclaw_bin)
-                tracker["live_notify_state"] = "attempted"
+                tracker["notify_mode"] = notifier_mode
+                tracker["adapter"] = notify_result.get("adapter")
+                tracker["live_notify_state"] = "nudge_sent" if notify_result.get("ok") else "nudge_failed"
                 tracker["live_notify"] = notify_result
                 write_json(tracker_path, tracker)
 
@@ -81,13 +94,15 @@ def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None, notifier
                 except Exception as exc:
                     append_jsonl(
                         paths.violations_jsonl,
-                        {
-                            "event": "ACK_PROCESSING_ERROR",
-                            "ts": now_iso(),
-                            "reason": str(exc),
-                            "violation_type": "ACK_ERROR",
-                            "envelope_id": ack_path.stem,
-                        },
+                        mailbox_event(
+                            component="receipt_watcher",
+                            event_type="ACK_PROCESSING_ERROR",
+                            event_family="comms/violation",
+                            state_class="violation_state",
+                            envelope_id=ack_path.stem,
+                            violation_type="ACK_ERROR",
+                            reason=str(exc),
+                        ),
                     )
         if once:
             return
