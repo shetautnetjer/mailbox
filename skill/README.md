@@ -37,9 +37,14 @@ cd ~/.openclaw/workspace-aya/.openclaw/skills/mailbox-skill
 - ✅ Shell-safe operations
 - ✅ No external dependencies
 
-**Phase 3: Live Notifications (Planned)**
+**Phase 3: Live Notifications (Planned / truth-tightened)**
 
-Live session notifications will use OpenClaw's native `sessions_send` tool when called from agent context.
+Live notify remains assistive only.
+Current verified shell/runtime posture in this repo:
+- durable file delivery is authoritative
+- recent session discovery is available
+- `openclaw agent --agent ... --message ...` can be used as an agent-turn nudge
+- direct shell `sessions_send` / session injection is not claimed here unless later verified
 
 ## Message Format
 

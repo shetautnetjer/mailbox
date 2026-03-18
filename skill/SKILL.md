@@ -137,7 +137,7 @@ Environment variables:
 ## Roadmap
 
 ### Phase 3 — Live Notifications (Planned)
-- Native `sessions_send` integration
+- Recent-session discovery plus optional agent-turn nudge integration
 - Session discovery
 - Real-time wake-up
 

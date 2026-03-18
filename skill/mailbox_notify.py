@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Mailbox Session Notifier - Cross-session agent messaging
-Uses OpenClaw native sessions_send for live notifications
+Mailbox Session Notifier - assistive mailbox notification prototype.
+
+This file documents a possible future session-inject path, but should not be
+read as proof that ordinary shell runtime supports direct `sessions_send`.
+Durable mailbox files remain the truth.
 """
 
 import os
@@ -46,7 +49,7 @@ class MailboxNotifier:
         return self.mailbox_root / "agents" / agent_name / "inbox"
     
     def get_session_keys_for_agent(self, agent_name: str) -> list:
-        """Get all active session keys for an agent using sessions_list"""
+        """Get discovered session keys for an agent via CLI listing."""
         # Map mailbox agent name to OpenClaw agent ID
         oc_agent_id = "main"  # Default
         for oc_id, mb_name in self.AGENT_ID_MAP.items():
@@ -75,9 +78,12 @@ class MailboxNotifier:
             return []
     
     def send_session_notification(self, session_key: str, notification: str, timeout: int = 0) -> bool:
-        """Send notification to a session using sessions_send"""
+        """Prototype future session notification helper.
+
+        Do not treat this as verified shell capability without runtime proof.
+        """
         try:
-            # Use sessions_send to notify the session
+            # Historical prototype: this attempted a direct session send path
             cmd = ["openclaw", "sessions", "send", session_key, notification]
             if timeout > 0:
                 cmd.extend(["--timeout", str(timeout)])
@@ -89,7 +95,7 @@ class MailboxNotifier:
                 timeout=30 if timeout == 0 else timeout + 10
             )
             if result.returncode != 0:
-                print(f"sessions_send failed: {result.stderr}", file=sys.stderr)
+                print(f"direct session notify failed: {result.stderr}", file=sys.stderr)
             return result.returncode == 0
         except Exception as e:
             print(f"Failed to notify session {session_key}: {e}", file=sys.stderr)
