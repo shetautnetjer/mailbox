@@ -8,9 +8,11 @@ from datetime import timedelta
 from pathlib import Path
 
 from mailbox_core import (
+    TRACKER_SCHEMA_VERSION,
     MailboxPaths,
     append_jsonl,
-    best_effort_openclaw_ping,
+    notifier_attempt,
+    normalize_notifier_mode,
     ensure_mailbox_layout,
     envelope_recipients,
     log,
@@ -36,6 +38,8 @@ def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts:
     timeout_s = int(ack_policy.get("ack_timeout_s", 300))
     ack_due_ts = (parse_iso(delivered_ts) + timedelta(seconds=timeout_s)).isoformat(timespec="seconds")
     tracker = {
+        "schema_version": TRACKER_SCHEMA_VERSION,
+        "component": "haiku_mailman",
         "delivery_id": gen_delivery_id(),
         "envelope_id": env["envelope_id"],
         "thread_id": env.get("thread_id", env.get("work_item_id")),
@@ -43,9 +47,12 @@ def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts:
         "sender": env.get("from"),
         "recipient": recipient,
         "delivered_ts": delivered_ts,
+        "delivery_state": "durably_delivered",
+        "ack_state": "pending",
         "ack_due_ts": ack_due_ts,
-        "ack_status": "pending",
         "ack_ts": None,
+        "live_notify_state": "not_attempted",
+        "live_notify": None,
         "last_ping_ts": None,
         "reping_count": 0,
         "max_repings": int(ack_policy.get("max_repings", 2)),
@@ -62,34 +69,43 @@ def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts:
     return tracker_path
 
 
-def notify_delivery(paths: MailboxPaths, tracker_path: Path | None, env: dict, recipient: str, openclaw_bin: str | None) -> None:
+def notify_delivery(paths: MailboxPaths, tracker_path: Path | None, env: dict, recipient: str, openclaw_bin: str | None, notifier_mode: str) -> None:
     message = (
         f"📬 New mail: [{env['subject']}] from [{env['from']}]. "
         f"Check mailbox inbox. ({env['envelope_id']} / {env['work_item_id']})"
     )
-    ping_ok = best_effort_openclaw_ping(recipient, message, openclaw_bin)
+    notify_result = notifier_attempt(mode=notifier_mode, agent=recipient, message=message, openclaw_bin=openclaw_bin)
     delivery_id = None
+    ts = now_iso()
     if tracker_path and tracker_path.exists():
         tracker = read_json(tracker_path)
-        tracker["last_ping_ts"] = now_iso()
+        tracker["last_ping_ts"] = ts
+        tracker["live_notify_state"] = "nudge_attempted"
+        tracker["live_notify"] = notify_result
         write_json(tracker_path, tracker)
         delivery_id = tracker["delivery_id"]
 
     append_jsonl(
         paths.deliveries_jsonl,
         {
-            "event_type": "SESSION_PING_SENT",
-            "ts": now_iso(),
+            "event_type": "AGENT_TURN_NUDGE_ATTEMPTED",
+            "ts": ts,
+            "component": "haiku_mailman",
+            "adapter": "openclaw-agent-cli",
+            "semantic_layer": "live_notify",
+            "delivery_truth": False,
             "delivery_id": delivery_id,
             "envelope_id": env["envelope_id"],
             "recipient": recipient,
             "message": message,
-            "ping_ok": ping_ok,
+            "notify_mode": notifier_mode,
+            "ok": notify_result.get("ok", False),
+            "notify_result": notify_result,
         },
     )
 
 
-def deliver_to_recipient(paths: MailboxPaths, env_path: Path, env: dict, recipient: str, openclaw_bin: str | None) -> None:
+def deliver_to_recipient(paths: MailboxPaths, env_path: Path, env: dict, recipient: str, openclaw_bin: str | None, notifier_mode: str) -> None:
     delivered_ts = now_iso()
     recipient_inbox_path = paths.agent_inbox(recipient) / env_path.name
     sender_outbox_path = paths.agent_outbox(env["from"]) / env_path.name
@@ -134,7 +150,7 @@ def deliver_to_recipient(paths: MailboxPaths, env_path: Path, env: dict, recipie
         tracker["receipt_id"] = receipt_id
         write_json(tracker_path, tracker)
 
-    notify_delivery(paths, tracker_path, env, recipient, openclaw_bin)
+    notify_delivery(paths, tracker_path, env, recipient, openclaw_bin, notifier_mode)
 
 
 def quarantine(paths: MailboxPaths, env_path: Path, env: dict, reason: str) -> None:
@@ -155,7 +171,7 @@ def quarantine(paths: MailboxPaths, env_path: Path, env: dict, reason: str) -> N
     )
 
 
-def process_envelope(paths: MailboxPaths, env_path: Path, openclaw_bin: str | None) -> None:
+def process_envelope(paths: MailboxPaths, env_path: Path, openclaw_bin: str | None, notifier_mode: str) -> None:
     env = read_json(env_path)
     errors = validate_envelope(env)
     if errors:
@@ -169,17 +185,17 @@ def process_envelope(paths: MailboxPaths, env_path: Path, openclaw_bin: str | No
 
     recipients = envelope_recipients(env)
     for recipient in recipients:
-        deliver_to_recipient(paths, env_path, env, recipient, openclaw_bin)
+        deliver_to_recipient(paths, env_path, env, recipient, openclaw_bin, notifier_mode)
 
     processed = paths.intake_processed / env_path.name
     shutil.move(str(env_path), str(processed))
     log("mailman", f"Delivered {env['envelope_id']} to {', '.join(recipients)}")
 
 
-def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
+def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None, notifier_mode: str) -> None:
     for tracker_path in sorted(paths.tracking_dir.glob("*.json")):
         tracker = read_json(tracker_path)
-        if tracker.get("ack_status") != "pending":
+        if tracker.get("ack_state", tracker.get("ack_status")) != "pending":
             continue
 
         now = parse_iso(now_iso())
@@ -196,7 +212,7 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
                 f"⏰ Ack overdue for {tracker['envelope_id']}. "
                 f"Please check inbox/acks. Work item: {tracker['work_item_id']}"
             )
-            ping_ok = best_effort_openclaw_ping(tracker["recipient"], msg, openclaw_bin)
+            notify_result = notifier_attempt(mode=notifier_mode, agent=tracker["recipient"], message=msg, openclaw_bin=openclaw_bin)
             append_jsonl(
                 paths.repings_jsonl,
                 {
@@ -206,7 +222,9 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
                     "envelope_id": tracker["envelope_id"],
                     "recipient": tracker["recipient"],
                     "reping_count": tracker["reping_count"],
-                    "ping_ok": ping_ok,
+                    "notify_mode": notifier_mode,
+                    "notify_ok": notify_result.get("ok", False),
+                    "notify_result": notify_result,
                 },
             )
             tracker["ack_due_ts"] = (
@@ -215,6 +233,7 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
             write_json(tracker_path, tracker)
             continue
 
+        tracker["ack_state"] = "timed_out"
         tracker["ack_status"] = "timed_out"
         tracker["ack_ts"] = now_iso()
         write_json(tracker_path, tracker)
@@ -236,7 +255,7 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
                 f"🚨 Mailbox timeout: {tracker['recipient']} never acked {tracker['envelope_id']} "
                 f"for {tracker['work_item_id']}"
             )
-            ping_ok = best_effort_openclaw_ping(escalation_target, msg, openclaw_bin)
+            notify_result = notifier_attempt(mode=notifier_mode, agent=escalation_target, message=msg, openclaw_bin=openclaw_bin)
             append_jsonl(
                 paths.escalations_jsonl,
                 {
@@ -246,18 +265,20 @@ def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None) -> None:
                     "envelope_id": tracker["envelope_id"],
                     "recipient": tracker["recipient"],
                     "escalation_target": escalation_target,
-                    "ping_ok": ping_ok,
+                    "notify_mode": notifier_mode,
+                    "notify_ok": notify_result.get("ok", False),
+                    "notify_result": notify_result,
                 },
             )
             tracker["escalated"] = True
             write_json(tracker_path, tracker)
 
 
-def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None) -> None:
+def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None, notifier_mode: str) -> None:
     while True:
         for env_path in sorted(paths.intake_pending.glob("*.json")):
             try:
-                process_envelope(paths, env_path, openclaw_bin)
+                process_envelope(paths, env_path, openclaw_bin, notifier_mode)
             except Exception as exc:
                 append_jsonl(
                     paths.violations_jsonl,
@@ -269,7 +290,7 @@ def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None) -> None:
                         "violation_type": "ROUTING_ERROR",
                     },
                 )
-        scan_pending_acks(paths, openclaw_bin)
+        scan_pending_acks(paths, openclaw_bin, notifier_mode)
         if once:
             return
         time.sleep(LOOP_INTERVAL_SECS)
@@ -280,10 +301,12 @@ def main() -> int:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--mailbox-dir", type=Path, default=DEFAULT_MAILBOX)
     parser.add_argument("--openclaw-bin", default=None, help="Optional OpenClaw CLI path")
+    parser.add_argument("--notifier-mode", default="agent-turn-nudge", help="none | discover-only | agent-turn-nudge")
     args = parser.parse_args()
 
     ensure_mailbox_layout(args.mailbox_dir)
-    run_loop(MailboxPaths(args.mailbox_dir), once=args.once, openclaw_bin=args.openclaw_bin)
+    notifier_mode = normalize_notifier_mode(args.notifier_mode)
+    run_loop(MailboxPaths(args.mailbox_dir), once=args.once, openclaw_bin=args.openclaw_bin, notifier_mode=notifier_mode)
     return 0
 
 

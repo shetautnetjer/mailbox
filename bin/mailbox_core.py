@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+NOTIFIER_MODES = {"none", "discover-only", "agent-turn-nudge"}
+TRACKER_SCHEMA_VERSION = "mailbox-tracker-v2"
+
 DEFAULT_AGENT_NAMES = ["aya", "arbiter", "haiku", "heru", "jabari", "kimi", "tariq"]
 VALID_TYPES = {"task", "response"}
 VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
@@ -256,20 +259,90 @@ def trust_violation(env: dict[str, Any]) -> str | None:
     return None
 
 
-def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:
+def normalize_notifier_mode(mode: str | None) -> str:
+    if not mode:
+        return "agent-turn-nudge"
+    mode = str(mode).strip().lower()
+    if mode not in NOTIFIER_MODES:
+        raise ValueError(f"notifier mode must be one of {sorted(NOTIFIER_MODES)}")
+    return mode
+
+
+def agent_turn_nudge(agent: str, message: str, openclaw_bin: str | None, timeout_s: int = 15) -> dict[str, Any]:
+    """Best-effort agent-turn nudge via `openclaw agent`.
+
+    This is not durable delivery and not direct session injection.
+    It is only an assistive runtime nudge that may cause an agent turn.
+    """
+    result: dict[str, Any] = {
+        "ok": False,
+        "mode": "agent-turn-nudge",
+        "component": "mailbox_core",
+        "adapter": "openclaw-agent-cli",
+        "semantic_layer": "live_notify",
+        "delivery_truth": False,
+        "agent": agent,
+        "timeout_s": timeout_s,
+    }
     if not openclaw_bin:
-        return False
+        result["reason"] = "openclaw_bin_not_configured"
+        return result
     if not shutil.which(openclaw_bin) and not Path(openclaw_bin).exists():
-        return False
+        result["reason"] = "openclaw_bin_not_found"
+        return result
     if agent not in SESSION_MAP:
-        return False
+        result["reason"] = "unknown_agent"
+        return result
     try:
-        result = subprocess.run(
-            [openclaw_bin, "agent", "--agent", agent, "--message", message, "--timeout", "15"],
+        proc = subprocess.run(
+            [openclaw_bin, "agent", "--agent", agent, "--message", message, "--timeout", str(timeout_s)],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=timeout_s + 5,
         )
-        return result.returncode == 0
-    except Exception:
-        return False
+        result.update(
+            {
+                "ok": proc.returncode == 0,
+                "returncode": proc.returncode,
+                "stdout": proc.stdout.strip()[:500] if proc.stdout else "",
+                "stderr": proc.stderr.strip()[:500] if proc.stderr else "",
+                "reason": "agent_turn_completed" if proc.returncode == 0 else "agent_turn_failed",
+            }
+        )
+        return result
+    except Exception as exc:
+        result["reason"] = "agent_turn_exception"
+        result["error"] = str(exc)
+        return result
+
+
+def notifier_attempt(
+    *,
+    mode: str,
+    agent: str,
+    message: str,
+    openclaw_bin: str | None,
+    discovery: dict[str, Any] | None = None,
+    timeout_s: int = 15,
+) -> dict[str, Any]:
+    mode = normalize_notifier_mode(mode)
+    base: dict[str, Any] = {
+        "mode": mode,
+        "component": "mailbox_core",
+        "semantic_layer": "live_notify",
+        "agent": agent,
+        "delivery_truth": False,
+        "discovery": discovery,
+    }
+    if mode == "none":
+        return {**base, "ok": False, "adapter": "disabled", "reason": "notifier_disabled"}
+    if mode == "discover-only":
+        return {**base, "ok": False, "adapter": "session_discovery", "reason": "discover_only_no_runtime_nudge"}
+
+    nudge = agent_turn_nudge(agent=agent, message=message, openclaw_bin=openclaw_bin, timeout_s=timeout_s)
+    nudge["discovery"] = discovery
+    return nudge
+
+
+def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:
+    return bool(agent_turn_nudge(agent, message, openclaw_bin).get("ok"))

@@ -8,7 +8,8 @@ from pathlib import Path
 from mailbox_core import (
     MailboxPaths,
     append_jsonl,
-    best_effort_openclaw_ping,
+    notifier_attempt,
+    normalize_notifier_mode,
     ensure_mailbox_layout,
     log,
     now_iso,
@@ -28,7 +29,7 @@ def find_tracker(paths: MailboxPaths, envelope_id: str, recipient: str) -> tuple
     return None, None
 
 
-def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | None) -> None:
+def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | None, notifier_mode: str) -> None:
     ack = read_json(ack_path)
     recipient = ack["agent"]
     envelope_id = ack["envelope_id"]
@@ -48,7 +49,8 @@ def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | No
     )
 
     if tracker_path and tracker:
-        tracker["ack_status"] = "acked" if ack.get("status") == "accepted" else "rejected"
+        tracker["ack_state"] = "acked" if ack.get("status") == "accepted" else "rejected"
+        tracker["ack_status"] = tracker["ack_state"]
         tracker["ack_ts"] = ack.get("received_ts", now_iso())
         write_json(tracker_path, tracker)
 
@@ -59,12 +61,15 @@ def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | No
                     msg = f"✅ Ack received: {recipient} accepted {envelope_id}"
                 else:
                     msg = f"❌ Ack received: {recipient} rejected {envelope_id} ({ack.get('reason', '')})"
-                best_effort_openclaw_ping(sender, msg, openclaw_bin)
+                notify_result = notifier_attempt(mode=notifier_mode, agent=sender, message=msg, openclaw_bin=openclaw_bin)
+                tracker["live_notify_state"] = "attempted"
+                tracker["live_notify"] = notify_result
+                write_json(tracker_path, tracker)
 
     ack_path.unlink(missing_ok=True)
 
 
-def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None) -> None:
+def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None, notifier_mode: str) -> None:
     while True:
         for agent_dir in (paths.root / "agents").glob("*"):
             ack_dir = agent_dir / "acks"
@@ -72,7 +77,7 @@ def run_loop(paths: MailboxPaths, once: bool, openclaw_bin: str | None) -> None:
                 continue
             for ack_path in sorted(ack_dir.glob("*.json")):
                 try:
-                    process_ack_file(paths, ack_path, openclaw_bin)
+                    process_ack_file(paths, ack_path, openclaw_bin, notifier_mode)
                 except Exception as exc:
                     append_jsonl(
                         paths.violations_jsonl,
@@ -94,10 +99,12 @@ def main() -> int:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--mailbox-dir", type=Path, default=DEFAULT_MAILBOX)
     parser.add_argument("--openclaw-bin", default=None)
+    parser.add_argument("--notifier-mode", default="agent-turn-nudge", help="none | discover-only | agent-turn-nudge")
     args = parser.parse_args()
 
     ensure_mailbox_layout(args.mailbox_dir)
-    run_loop(MailboxPaths(args.mailbox_dir), once=args.once, openclaw_bin=args.openclaw_bin)
+    notifier_mode = normalize_notifier_mode(args.notifier_mode)
+    run_loop(MailboxPaths(args.mailbox_dir), once=args.once, openclaw_bin=args.openclaw_bin, notifier_mode=notifier_mode)
     return 0
 
 
