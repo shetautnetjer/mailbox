@@ -425,6 +425,22 @@ def tracker_live_notify_state(tracker: dict[str, Any]) -> str:
     return "not_attempted"
 
 
+def operator_live_notify_state(tracker: dict[str, Any]) -> str:
+    """Normalize legacy migrated notify attempts for operator-facing status views."""
+    live_notify_state = tracker_live_notify_state(tracker)
+    if live_notify_state != "attempted_legacy":
+        return live_notify_state
+
+    notify_mode = tracker.get("notify_mode")
+    adapter = tracker.get("adapter")
+
+    if notify_mode == "agent-turn-nudge" and adapter == "legacy_ping":
+        return "legacy_nudge_attempted"
+    if notify_mode == "discover-only" or adapter == "session_discovery":
+        return "legacy_discovery_only"
+    return "legacy_unknown_attempt"
+
+
 def tracker_schema_drift(tracker: dict[str, Any]) -> list[str]:
     drift: list[str] = []
     if tracker.get("schema_version") != TRACKER_SCHEMA_VERSION:

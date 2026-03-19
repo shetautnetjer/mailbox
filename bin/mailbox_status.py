@@ -10,6 +10,7 @@ from mailbox_core import (
     MailboxPaths,
     SESSION_MAP,
     normalized_tracker_view,
+    operator_live_notify_state,
     parse_iso,
     read_json,
 )
@@ -44,11 +45,12 @@ def summarize_trackers(paths: MailboxPaths) -> dict:
         ack_state = tracker["ack_state"]
         delivery_state = tracker["delivery_state"]
         live_notify_state = tracker["live_notify_state"]
+        operator_live_notify = operator_live_notify_state(tracker)
         schema_drift = tracker["schema_drift"]
 
         delivery_state_counts[delivery_state] = delivery_state_counts.get(delivery_state, 0) + 1
         ack_state_counts[ack_state] = ack_state_counts.get(ack_state, 0) + 1
-        live_notify_state_counts[live_notify_state] = live_notify_state_counts.get(live_notify_state, 0) + 1
+        live_notify_state_counts[operator_live_notify] = live_notify_state_counts.get(operator_live_notify, 0) + 1
 
         if ack_state == "pending":
             counts["pending_ack"] += 1
@@ -90,6 +92,7 @@ def summarize_trackers(paths: MailboxPaths) -> dict:
                         "ack_due_ts": due,
                         "reping_count": tracker.get("reping_count"),
                         "live_notify_state": live_notify_state,
+                        "live_notify_state_normalized": operator_live_notify,
                         "schema_drift": schema_drift,
                     })
             except Exception:
@@ -102,6 +105,7 @@ def summarize_trackers(paths: MailboxPaths) -> dict:
             "delivery_state": delivery_state,
             "ack_state": ack_state,
             "live_notify_state": live_notify_state,
+            "live_notify_state_normalized": operator_live_notify,
             "notify_mode": tracker.get("notify_mode"),
             "event_family": tracker.get("event_family"),
             "state_class": tracker.get("state_class"),
@@ -199,14 +203,20 @@ def main() -> int:
     if report['overdue_acks']:
         for item in report['overdue_acks'][:10]:
             drift = f" drift={','.join(item['schema_drift'])}" if item.get('schema_drift') else ''
-            print(f"  - {item['recipient']} :: {item['envelope_id']} :: due {item['ack_due_ts']} :: repings {item['reping_count']} :: notify={item['live_notify_state']}{drift}")
+            raw_notify = item['live_notify_state']
+            normalized_notify = item.get('live_notify_state_normalized') or raw_notify
+            notify = raw_notify if normalized_notify == raw_notify else f"{normalized_notify} raw={raw_notify}"
+            print(f"  - {item['recipient']} :: {item['envelope_id']} :: due {item['ack_due_ts']} :: repings {item['reping_count']} :: notify={notify}{drift}")
     else:
         print('  - none')
     print('\nRecent deliveries:')
     for item in report['recent_deliveries'][:10]:
         drift = f" :: drift={','.join(item['schema_drift'])}" if item.get('schema_drift') else ''
         mode = item.get('notify_mode') or 'unset'
-        print(f"  - {item['recipient']} :: {item['envelope_id']} :: delivery={item['delivery_state']} ack={item['ack_state']} notify={item['live_notify_state']} mode={mode}{drift}")
+        raw_notify = item['live_notify_state']
+        normalized_notify = item.get('live_notify_state_normalized') or raw_notify
+        notify = raw_notify if normalized_notify == raw_notify else f"{normalized_notify} raw={raw_notify}"
+        print(f"  - {item['recipient']} :: {item['envelope_id']} :: delivery={item['delivery_state']} ack={item['ack_state']} notify={notify} mode={mode}{drift}")
 
     print('\nSchema-drifted trackers:')
     if report['schema_drifted_trackers']:

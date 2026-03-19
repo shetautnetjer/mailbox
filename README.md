@@ -51,6 +51,7 @@ Trackers are moving toward explicit separation of:
 
 Older tracker files may still contain legacy fields such as `ack_status`; operator reporting treats those as migration compatibility only while the schema converges.
 Notify mode and recent-session discovery are reported as assistive context, not mailbox delivery truth.
+Legacy `live_notify_state=attempted_legacy` history is preserved in tracker records; operator views normalize those raw values into clearer legacy classifications such as `legacy_nudge_attempted` or `legacy_discovery_only` without rewriting tracker provenance.
 
 A bounded legacy backfill tool is available:
 

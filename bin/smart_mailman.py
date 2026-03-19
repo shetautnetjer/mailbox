@@ -39,6 +39,7 @@ from mailbox_core import (
     mailbox_event,
     normalize_notifier_mode,
     normalized_tracker_view,
+    operator_live_notify_state,
     notifier_attempt,
     now_iso,
     read_json,
@@ -350,6 +351,11 @@ class SessionAwareMailman:
         def count_where(key: str, value: str) -> int:
             return sum(1 for t in tracking if t.get(key) == value)
 
+        live_notify_state_counts: dict[str, int] = {}
+        for tracker in tracking:
+            state = operator_live_notify_state(tracker)
+            live_notify_state_counts[state] = live_notify_state_counts.get(state, 0) + 1
+
         return {
             "notifier_mode": self.notifier_mode,
             "pending_intake_count": len(pending_intake),
@@ -365,14 +371,7 @@ class SessionAwareMailman:
                 "timed_out": count_where("ack_state", "timed_out"),
                 "not_applicable_yet": count_where("ack_state", "not_applicable_yet"),
             },
-            "live_notify_state_counts": {
-                "disabled": count_where("live_notify_state", "disabled"),
-                "discovered_only": count_where("live_notify_state", "discovered_only"),
-                "nudge_sent": count_where("live_notify_state", "nudge_sent"),
-                "nudge_failed": count_where("live_notify_state", "nudge_failed"),
-                "not_attempted": count_where("live_notify_state", "not_attempted"),
-                "attempted_legacy": count_where("live_notify_state", "attempted_legacy"),
-            },
+            "live_notify_state_counts": live_notify_state_counts,
             "schema_drift_counts": {
                 "legacy_compat_only": sum(1 for t in tracking if "legacy_ack_status" in t.get("schema_drift", [])),
                 "schema_drifted": sum(1 for t in tracking if t.get("schema_drift")),
@@ -385,6 +384,7 @@ class SessionAwareMailman:
                     "ack_due_ts": t.get("ack_due_ts"),
                     "reping_count": t.get("reping_count"),
                     "live_notify_state": t.get("live_notify_state"),
+                    "live_notify_state_normalized": operator_live_notify_state(t),
                     "schema_drift": t.get("schema_drift"),
                 }
                 for t in tracking
