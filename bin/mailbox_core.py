@@ -380,6 +380,79 @@ def notifier_attempt(
     return nudge
 
 
+def tracker_ack_state(tracker: dict[str, Any]) -> str:
+    """Return normalized ack state, keeping legacy fields as compatibility only."""
+    ack_state = tracker.get("ack_state")
+    if ack_state:
+        return str(ack_state)
+
+    legacy = tracker.get("ack_status")
+    if legacy in {"pending", "acked", "rejected", "timed_out"}:
+        return str(legacy)
+    if legacy == "escalated":
+        return "timed_out"
+    if tracker.get("escalated"):
+        return "timed_out"
+    return "unknown"
+
+
+def tracker_delivery_state(tracker: dict[str, Any]) -> str:
+    delivery_state = tracker.get("delivery_state")
+    if delivery_state:
+        return str(delivery_state)
+    if tracker.get("delivered_ts") or tracker.get("file_delivery"):
+        return "durably_delivered"
+    return "unknown"
+
+
+def tracker_live_notify_state(tracker: dict[str, Any]) -> str:
+    live_notify_state = tracker.get("live_notify_state")
+    if live_notify_state:
+        return str(live_notify_state)
+
+    notify_mode = tracker.get("notify_mode")
+    if notify_mode == "none":
+        return "disabled"
+    if notify_mode == "discover-only":
+        return "discovered_only"
+
+    session_delivery = tracker.get("session_delivery")
+    if session_delivery and session_delivery.get("method") == "session_discovery_only":
+        return "discovered_only"
+    if tracker.get("last_ping_ts"):
+        return "attempted_legacy"
+    return "not_attempted"
+
+
+def tracker_schema_drift(tracker: dict[str, Any]) -> list[str]:
+    drift: list[str] = []
+    if tracker.get("schema_version") != TRACKER_SCHEMA_VERSION:
+        drift.append("schema_version")
+    if "ack_state" not in tracker and "ack_status" in tracker:
+        drift.append("legacy_ack_status")
+    if "delivery_state" not in tracker:
+        drift.append("missing_delivery_state")
+    if "live_notify_state" not in tracker:
+        drift.append("missing_live_notify_state")
+    if "event_family" not in tracker:
+        drift.append("missing_event_family")
+    if "state_class" not in tracker:
+        drift.append("missing_state_class")
+    if tracker.get("state_class") == "delivery_state" and tracker_ack_state(tracker) in {"acked", "rejected", "timed_out"}:
+        drift.append("tracker_state_class_not_split")
+    return drift
+
+
+def normalized_tracker_view(tracker: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **tracker,
+        "ack_state": tracker_ack_state(tracker),
+        "delivery_state": tracker_delivery_state(tracker),
+        "live_notify_state": tracker_live_notify_state(tracker),
+        "schema_drift": tracker_schema_drift(tracker),
+    }
+
+
 def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:
     """Legacy compatibility wrapper. Prefer notifier_attempt()/agent_turn_nudge()."""
     return bool(agent_turn_nudge(agent, message, openclaw_bin).get("ok"))

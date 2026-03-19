@@ -49,7 +49,8 @@ Trackers are moving toward explicit separation of:
 - `ack_state`
 - `live_notify_state`
 
-Older tracker files may still contain legacy fields; operator reporting tolerates both while the schema converges.
+Older tracker files may still contain legacy fields such as `ack_status`; operator reporting treats those as migration compatibility only while the schema converges.
+Notify mode and recent-session discovery are reported as assistive context, not mailbox delivery truth.
 
 ## Operator view
 

@@ -38,6 +38,7 @@ from mailbox_core import (
     envelope_recipients,
     mailbox_event,
     normalize_notifier_mode,
+    normalized_tracker_view,
     notifier_attempt,
     now_iso,
     read_json,
@@ -337,7 +338,7 @@ class SessionAwareMailman:
         tracking = []
         for tracker_path in sorted(self.paths.tracking_dir.glob("*.json")):
             try:
-                tracking.append(read_json(tracker_path))
+                tracking.append(normalized_tracker_view(read_json(tracker_path)))
             except Exception:
                 continue
 
@@ -347,20 +348,7 @@ class SessionAwareMailman:
         presence = self.get_agent_presence()
 
         def count_where(key: str, value: str) -> int:
-            total = 0
-            for t in tracking:
-                observed = t.get(key, t.get(key.replace("_state", "_status")))
-                if key == "delivery_state" and observed is None and (t.get("file_delivery") or t.get("delivered_ts")):
-                    observed = "durably_delivered"
-                if key == "live_notify_state" and observed is None:
-                    session_delivery = t.get("session_delivery")
-                    if session_delivery and session_delivery.get("method") == "session_discovery_only":
-                        observed = "discovered_only"
-                    elif t.get("last_ping_ts"):
-                        observed = "attempted_legacy"
-                if observed == value:
-                    total += 1
-            return total
+            return sum(1 for t in tracking if t.get(key) == value)
 
         return {
             "notifier_mode": self.notifier_mode,
@@ -385,6 +373,10 @@ class SessionAwareMailman:
                 "not_attempted": count_where("live_notify_state", "not_attempted"),
                 "attempted_legacy": count_where("live_notify_state", "attempted_legacy"),
             },
+            "schema_drift_counts": {
+                "legacy_compat_only": sum(1 for t in tracking if "legacy_ack_status" in t.get("schema_drift", [])),
+                "schema_drifted": sum(1 for t in tracking if t.get("schema_drift")),
+            },
             "overdue_acks": [
                 {
                     "delivery_id": t.get("delivery_id"),
@@ -392,9 +384,11 @@ class SessionAwareMailman:
                     "recipient": t.get("recipient"),
                     "ack_due_ts": t.get("ack_due_ts"),
                     "reping_count": t.get("reping_count"),
+                    "live_notify_state": t.get("live_notify_state"),
+                    "schema_drift": t.get("schema_drift"),
                 }
                 for t in tracking
-                if t.get("ack_state", t.get("ack_status")) == "pending" and t.get("ack_due_ts") and t.get("ack_due_ts") < now_iso()
+                if t.get("ack_state") == "pending" and t.get("ack_due_ts") and t.get("ack_due_ts") < now_iso()
             ],
             "recently_active_agents": [agent for agent, info in sorted(presence.items()) if info.get("recently_active")],
         }
@@ -433,6 +427,9 @@ class SessionAwareMailman:
             print(f"  {key}: {value}")
         print("\nLive notify states:")
         for key, value in snap["live_notify_state_counts"].items():
+            print(f"  {key}: {value}")
+        print("\nSchema drift:")
+        for key, value in snap["schema_drift_counts"].items():
             print(f"  {key}: {value}")
         print("\nOverdue acks:")
         if not snap["overdue_acks"]:
