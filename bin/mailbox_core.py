@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 NOTIFIER_MODES = {"none", "discover-only", "agent-turn-nudge"}
 TRACKER_SCHEMA_VERSION = "mailbox-tracker-v3"
+TRACKER_MIGRATION_VERSION = "mailbox-tracker-migration-v1"
 EVENT_SCHEMA_VERSION = "mailbox-event-v1"
 
 DEFAULT_AGENT_NAMES = ["aya", "arbiter", "haiku", "heru", "jabari", "kimi", "tariq"]
@@ -438,19 +439,117 @@ def tracker_schema_drift(tracker: dict[str, Any]) -> list[str]:
         drift.append("missing_event_family")
     if "state_class" not in tracker:
         drift.append("missing_state_class")
-    if tracker.get("state_class") == "delivery_state" and tracker_ack_state(tracker) in {"acked", "rejected", "timed_out"}:
-        drift.append("tracker_state_class_not_split")
+    if "component" not in tracker:
+        drift.append("missing_component")
+    if "provenance_writer" not in tracker:
+        drift.append("missing_provenance_writer")
+    if "notify_mode" not in tracker:
+        drift.append("missing_notify_mode")
+    if "adapter" not in tracker:
+        drift.append("missing_adapter")
     return drift
 
 
+def migrate_tracker_record(
+    tracker: dict[str, Any],
+    *,
+    writer: str = "mailbox_core",
+    now_ts: str | None = None,
+) -> tuple[dict[str, Any], bool]:
+    now_ts = now_ts or now_iso()
+    migrated = dict(tracker)
+    changed = False
+
+    originally_present = set(tracker.keys())
+    inferred_fields: dict[str, str] = dict(tracker.get("migration_inference") or {})
+    legacy_fields_preserved = dict(tracker.get("legacy_fields_preserved") or {})
+
+    def preserve_legacy(field: str) -> None:
+        nonlocal changed
+        if field in tracker and field not in legacy_fields_preserved:
+            legacy_fields_preserved[field] = tracker.get(field)
+            changed = True
+
+    def set_if_missing(field: str, value: Any, reason: str) -> None:
+        nonlocal changed
+        if field in migrated:
+            return
+        migrated[field] = value
+        if field not in originally_present:
+            inferred_fields[field] = reason
+        changed = True
+
+    preserve_legacy("ack_status")
+    preserve_legacy("receipt_path")
+    preserve_legacy("session_delivery")
+
+    if migrated.get("schema_version") != TRACKER_SCHEMA_VERSION:
+        migrated["schema_version"] = TRACKER_SCHEMA_VERSION
+        inferred_fields["schema_version"] = "migration:set_tracker_schema_version"
+        changed = True
+
+    set_if_missing("delivery_state", tracker_delivery_state(tracker), "migration:derived_delivery_state")
+    set_if_missing("ack_state", tracker_ack_state(tracker), "migration:derived_ack_state")
+    set_if_missing("live_notify_state", tracker_live_notify_state(tracker), "migration:derived_live_notify_state")
+    set_if_missing("event_family", "comms/delivery", "migration:default_delivery_family")
+    set_if_missing("state_class", "delivery_state", "migration:default_delivery_tracker_state_class")
+    set_if_missing("component", "legacy_tracker", "migration:legacy_tracker_component")
+    set_if_missing("provenance_writer", migrated.get("component") or "legacy_tracker", "migration:derived_provenance_writer")
+
+    notify_mode = migrated.get("notify_mode")
+    if notify_mode is None:
+        if tracker.get("session_delivery"):
+            notify_mode = "discover-only"
+            reason = "migration:derived_from_session_delivery"
+        elif tracker.get("last_ping_ts"):
+            notify_mode = "agent-turn-nudge"
+            reason = "migration:derived_from_last_ping"
+        else:
+            notify_mode = "none"
+            reason = "migration:default_none"
+        migrated["notify_mode"] = notify_mode
+        inferred_fields["notify_mode"] = reason
+        changed = True
+
+    if "adapter" not in migrated:
+        adapter = None
+        reason = "migration:adapter_unknown"
+        session_delivery = tracker.get("session_delivery")
+        if isinstance(session_delivery, dict) and session_delivery.get("method") == "session_discovery_only":
+            adapter = "session_discovery"
+            reason = "migration:derived_from_session_delivery"
+        elif tracker.get("last_ping_ts"):
+            adapter = "legacy_ping"
+            reason = "migration:derived_from_last_ping"
+        migrated["adapter"] = adapter
+        inferred_fields["adapter"] = reason
+        changed = True
+
+    if changed:
+        migrated["migration_version"] = TRACKER_MIGRATION_VERSION
+        migrated["migrated_at"] = now_ts
+        migrated["migration_inference"] = dict(sorted(inferred_fields.items()))
+        migrated["legacy_fields_preserved"] = legacy_fields_preserved
+        migrated["migration_notes"] = (
+            "Legacy tracker normalized toward v3 without deleting legacy fields; "
+            "inferred values are listed in migration_inference."
+        )
+
+    return migrated, changed
+
+
 def normalized_tracker_view(tracker: dict[str, Any]) -> dict[str, Any]:
-    return {
-        **tracker,
-        "ack_state": tracker_ack_state(tracker),
-        "delivery_state": tracker_delivery_state(tracker),
-        "live_notify_state": tracker_live_notify_state(tracker),
-        "schema_drift": tracker_schema_drift(tracker),
+    migrated, changed = migrate_tracker_record(tracker, writer="mailbox_core")
+    view = {
+        **migrated,
+        "ack_state": tracker_ack_state(migrated),
+        "delivery_state": tracker_delivery_state(migrated),
+        "live_notify_state": tracker_live_notify_state(migrated),
+        "schema_drift": tracker_schema_drift(migrated),
     }
+    if changed:
+        view["migration_pending_write"] = True
+    return view
 
 
 def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:

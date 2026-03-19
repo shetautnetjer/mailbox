@@ -19,5 +19,34 @@
   "escalation_target": "aya",
   "escalated": false,
   "receipt_path": null,
-  "note": "duplicate tracker \u2014 closed manually; sibling del-2026-03-09-071133-79bc has the real receipt"
+  "note": "duplicate tracker — closed manually; sibling del-2026-03-09-071133-79bc has the real receipt",
+  "schema_version": "mailbox-tracker-v3",
+  "delivery_state": "durably_delivered",
+  "ack_state": "acked",
+  "live_notify_state": "attempted_legacy",
+  "event_family": "comms/delivery",
+  "state_class": "delivery_state",
+  "component": "legacy_tracker",
+  "provenance_writer": "legacy_tracker",
+  "notify_mode": "agent-turn-nudge",
+  "adapter": "legacy_ping",
+  "migration_version": "mailbox-tracker-migration-v1",
+  "migrated_at": "2026-03-19T02:01:23+00:00",
+  "migration_inference": {
+    "ack_state": "migration:derived_ack_state",
+    "adapter": "migration:derived_from_last_ping",
+    "component": "migration:legacy_tracker_component",
+    "delivery_state": "migration:derived_delivery_state",
+    "event_family": "migration:default_delivery_family",
+    "live_notify_state": "migration:derived_live_notify_state",
+    "notify_mode": "migration:derived_from_last_ping",
+    "provenance_writer": "migration:derived_provenance_writer",
+    "schema_version": "migration:set_tracker_schema_version",
+    "state_class": "migration:default_delivery_tracker_state_class"
+  },
+  "legacy_fields_preserved": {
+    "ack_status": "acked",
+    "receipt_path": null
+  },
+  "migration_notes": "Legacy tracker normalized toward v3 without deleting legacy fields; inferred values are listed in migration_inference."
 }

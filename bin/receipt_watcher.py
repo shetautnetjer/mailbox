@@ -9,6 +9,7 @@ from mailbox_core import (
     MailboxPaths,
     append_jsonl,
     mailbox_event,
+    migrate_tracker_record,
     notifier_attempt,
     normalize_notifier_mode,
     ensure_mailbox_layout,
@@ -58,6 +59,7 @@ def process_ack_file(paths: MailboxPaths, ack_path: Path, openclaw_bin: str | No
     )
 
     if tracker_path and tracker:
+        tracker, _ = migrate_tracker_record(tracker, writer="receipt_watcher")
         tracker["event_family"] = tracker.get("event_family", "comms/delivery")
         tracker["state_class"] = tracker.get("state_class", "delivery_state")
         tracker["provenance_writer"] = "receipt_watcher"

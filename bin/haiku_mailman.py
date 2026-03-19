@@ -12,6 +12,7 @@ from mailbox_core import (
     MailboxPaths,
     append_jsonl,
     mailbox_event,
+    migrate_tracker_record,
     notifier_attempt,
     normalize_notifier_mode,
     ensure_mailbox_layout,
@@ -225,7 +226,9 @@ def process_envelope(paths: MailboxPaths, env_path: Path, openclaw_bin: str | No
 
 def scan_pending_acks(paths: MailboxPaths, openclaw_bin: str | None, notifier_mode: str) -> None:
     for tracker_path in sorted(paths.tracking_dir.glob("*.json")):
-        tracker = read_json(tracker_path)
+        tracker, changed = migrate_tracker_record(read_json(tracker_path), writer="haiku_mailman")
+        if changed:
+            write_json(tracker_path, tracker)
         if tracker.get("ack_state", tracker.get("ack_status")) != "pending":
             continue
 

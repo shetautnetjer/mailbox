@@ -52,6 +52,14 @@ Trackers are moving toward explicit separation of:
 Older tracker files may still contain legacy fields such as `ack_status`; operator reporting treats those as migration compatibility only while the schema converges.
 Notify mode and recent-session discovery are reported as assistive context, not mailbox delivery truth.
 
+A bounded legacy backfill tool is available:
+
+```bash
+python3 bin/migrate_trackers.py --write
+```
+
+It normalizes legacy trackers toward v3, preserves legacy fields under `legacy_fields_preserved`, and records inferred/backfilled values under `migration_inference` plus migration lineage fields.
+
 ## Operator view
 
 Human-readable:
