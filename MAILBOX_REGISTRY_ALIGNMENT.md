@@ -86,6 +86,7 @@ These are proposed registry-facing comms classes. Treat them as implementation t
 
 - `comms/envelope`
 - `comms/delivery`
+- `comms/response`
 - `comms/ack`
 - `comms/timeout`
 - `comms/escalation`
@@ -115,6 +116,12 @@ The first three are the immediate minimum.
 - `event_type`: `DELIVERY_CONFIRMED`
 - `event_family`: `comms/delivery`
 - `state_class`: `delivery_state`
+
+### Completed result delivered
+- `event_type`: `RESULT_DELIVERED`
+- `event_family`: `comms/response`
+- `state_class`: `routing_state`
+- note: use this to mark structured result arrival and required requester/sender follow-up without collapsing it into ack/receipt state
 
 ### Ack observed
 - `event_type`: `ACK_RECORDED`

@@ -316,12 +316,18 @@ class SessionAwareMailman:
         sender = env.get("from", "Unknown")
         work_item = env.get("work_item_id", "No work item")
         envelope_id = env.get("envelope_id", "unknown")
+        if env.get("type") == "response" and env.get("response_type") == "result" and env.get("status") == "completed":
+            action = "Review completed result, then send next task/response if needed"
+            prefix = "✅ Completed result"
+        else:
+            action = f"Check inbox at agents/{recipient}/inbox/"
+            prefix = "📬 Mailbox"
         return (
-            f"📬 Mailbox: [{subject}]\n"
+            f"{prefix}: [{subject}]\n"
             f"From: {sender}\n"
             f"Work item: {work_item}\n"
             f"Envelope: {envelope_id}\n"
-            f"Action: Check inbox at agents/{recipient}/inbox/"
+            f"Action: {action}"
         )
 
     def scan_pending(self) -> list[dict]:

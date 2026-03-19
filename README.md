@@ -42,6 +42,28 @@ Meaning:
 - `bin/mailbox_status.py` — operator status view
 - `bin/session_mailman.py` — non-authoritative helper / future adapter placeholder
 
+## Completion semantics
+
+Preferred modern completion shape:
+- `type=response`
+- `response_type=result`
+- `status=completed`
+- linked via `parent_id` plus normal `work_item_id` / `thread_id`
+
+This is the primary way to represent completed work.
+It keeps work completion inside the shared task/response model instead of preserving `work_complete` as a forever-parallel type.
+
+Legacy compatibility:
+- `send_mail.py --type work_complete` is accepted as a compatibility alias
+- it is normalized at authoring time into `type=response`, `response_type=result`, `status=completed`
+- if legacy callers omit `parent_id`, authoring falls back to `thread_id` and then `work_item_id` so the envelope still lands inside the structured response path
+- agents and docs should prefer the structured response shape in new work
+
+Sender follow-up semantics:
+- delivery/ack receipts stay receipt/ack semantics only
+- when a completed result envelope is durably delivered, the runtime now records a distinct result-arrival event and sends a nudge that explicitly says follow-up is needed
+- that follow-up owner is the envelope recipient, typically the requester or current task owner reviewing the result
+
 ## State separation
 
 Trackers are moving toward explicit separation of:

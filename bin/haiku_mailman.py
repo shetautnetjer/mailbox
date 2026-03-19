@@ -32,6 +32,14 @@ DEFAULT_MAILBOX = Path(__file__).resolve().parent.parent
 LOOP_INTERVAL_SECS = 5
 
 
+def is_completed_result(env: dict) -> bool:
+    return (
+        env.get("type") == "response"
+        and env.get("response_type") == "result"
+        and env.get("status") == "completed"
+    )
+
+
 def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts: str) -> Path | None:
     ack_policy = env.get("ack_policy", {})
     if not ack_policy.get("ack_required", True):
@@ -78,10 +86,17 @@ def create_tracker(paths: MailboxPaths, env: dict, recipient: str, delivered_ts:
 
 
 def notify_delivery(paths: MailboxPaths, tracker_path: Path | None, env: dict, recipient: str, openclaw_bin: str | None, notifier_mode: str) -> None:
-    message = (
-        f"📬 New mail: [{env['subject']}] from [{env['from']}]. "
-        f"Check mailbox inbox. ({env['envelope_id']} / {env['work_item_id']})"
-    )
+    if is_completed_result(env):
+        message = (
+            f"✅ Completed result arrived: [{env['subject']}] from [{env['from']}]. "
+            f"Review mailbox inbox and decide next follow-up. "
+            f"({env['envelope_id']} / {env['work_item_id']})"
+        )
+    else:
+        message = (
+            f"📬 New mail: [{env['subject']}] from [{env['from']}]. "
+            f"Check mailbox inbox. ({env['envelope_id']} / {env['work_item_id']})"
+        )
     notify_result = notifier_attempt(mode=notifier_mode, agent=recipient, message=message, openclaw_bin=openclaw_bin)
     delivery_id = None
     ts = now_iso()
@@ -173,6 +188,32 @@ def deliver_to_recipient(paths: MailboxPaths, env_path: Path, env: dict, recipie
             kind="inbox_copy_observed",
         ),
     )
+
+    if is_completed_result(env):
+        append_jsonl(
+            paths.deliveries_jsonl,
+            mailbox_event(
+                component="haiku_mailman",
+                event_type="RESULT_DELIVERED",
+                event_family="comms/response",
+                state_class="routing_state",
+                ts=delivered_ts,
+                delivery_truth=True,
+                delivery_id=delivery_id,
+                envelope_id=env["envelope_id"],
+                parent_id=env.get("parent_id"),
+                thread_id=env.get("thread_id", env.get("work_item_id")),
+                work_item_id=env.get("work_item_id"),
+                sender=env["from"],
+                recipient=recipient,
+                response_type=env.get("response_type"),
+                status=env.get("status"),
+                sender_followup_required=True,
+                followup_owner=recipient,
+                followup_action="review_completed_result",
+                semantic_layer="completed_result",
+            ),
+        )
 
     if tracker_path and tracker_path.exists():
         tracker = read_json(tracker_path)

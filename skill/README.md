@@ -24,7 +24,7 @@ cd ~/.openclaw/workspace-aya/.openclaw/skills/mailbox-skill
 | `./mailbox.sh check` | Check inbox for new messages |
 | `./mailbox.sh send <to> <subject> [body]` | Send message to agent |
 | `./mailbox.sh reply <id> <message>` | Reply to a message |
-| `./mailbox.sh complete <sum> [det] [deliv]` | Announce work done |
+| `./mailbox.sh complete <sum> [det] [deliv]` | Legacy convenience wrapper; prefer structured `type=response` + `response_type=result` + `status=completed` |
 | `./mailbox.sh list [n]` | List recent messages |
 | `./mailbox.sh watch` | Watch for new messages |
 
@@ -48,12 +48,10 @@ Current verified shell/runtime posture in this repo:
 
 ## Message Format
 
-Standard JSON envelope with fields:
-- `envelope_id` — Unique ID
-- `from`, `to` — Agent names
-- `subject`, `body` — Content
-- `timestamp` — ISO 8601
-- `type` — `message` or `work_complete`
+Modern runtime shape prefers structured task/response envelopes:
+- completed work should be sent as `type=response`, `response_type=result`, `status=completed`
+- linked with `parent_id` plus normal `work_item_id` / `thread_id`
+- legacy `work_complete` wording should be treated as compatibility-only or a convenience wrapper, not the preferred canonical shape
 
 ## Files
 

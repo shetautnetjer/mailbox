@@ -25,13 +25,15 @@ from uuid7_util import gen_envelope_id, gen_event_id
 
 
 DEFAULT_MAILBOX = Path(__file__).resolve().parent.parent
+LEGACY_TYPE_ALIASES = {"work_complete": "response"}
 
 
 def build_envelope(args: argparse.Namespace) -> dict:
+    resolved_type = LEGACY_TYPE_ALIASES.get(args.type, args.type)
     env: dict = {
         "envelope_id": gen_envelope_id(),
         "event_id": gen_event_id(),
-        "type": args.type,
+        "type": resolved_type,
         "from": args.sender,
         "to": args.to,
         "ts": now_iso(),
@@ -49,7 +51,7 @@ def build_envelope(args: argparse.Namespace) -> dict:
         env.pop("to", None)
         env["to_all"] = [x.strip() for x in args.to_all.split(",") if x.strip()]
 
-    if args.type == "task":
+    if resolved_type == "task":
         env["task_type"] = args.task_type
         if args.constraints:
             env["constraints"] = [x.strip() for x in args.constraints.split(";") if x.strip()]
@@ -58,9 +60,11 @@ def build_envelope(args: argparse.Namespace) -> dict:
                 x.strip() for x in args.acceptance_criteria.split(";") if x.strip()
             ]
     else:
-        env["parent_id"] = args.parent_id
-        env["response_type"] = args.response_type
-        env["status"] = args.status
+        env["parent_id"] = args.parent_id or (
+            args.thread_id or args.work_item if args.type == "work_complete" else None
+        )
+        env["response_type"] = args.response_type or ("result" if args.type == "work_complete" else None)
+        env["status"] = args.status or ("completed" if args.type == "work_complete" else None)
         env["blocker_flag"] = bool(args.blocker_flag)
         if args.blocker_reason:
             env["blocker_reason"] = args.blocker_reason
@@ -95,7 +99,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from", dest="sender", required=True, help="Sender agent name")
     parser.add_argument("--to", required=False, help="Recipient agent name")
     parser.add_argument("--to-all", required=False, help="Comma-separated list of recipients")
-    parser.add_argument("--type", required=True, choices=sorted(VALID_TYPES))
+    parser.add_argument("--type", required=True, choices=sorted(VALID_TYPES | set(LEGACY_TYPE_ALIASES)))
     parser.add_argument("--work-item", required=True, help="work_item_id")
     parser.add_argument("--subject", required=True)
     parser.add_argument("--body", required=True)

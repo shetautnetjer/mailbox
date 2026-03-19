@@ -99,6 +99,9 @@ mailbox/
 }
 ```
 
+Completed work should be represented with this structured response shape.
+Legacy `work_complete` wording is compatibility-only and should be treated as an alias/wrapper over the response model, not as the preferred long-term envelope type.
+
 ---
 
 ## Workflow

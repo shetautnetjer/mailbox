@@ -101,30 +101,22 @@ cmd_complete() {
     local summary="$1"
     local details="${2:-}"
     local deliverables="${3:-}"
-    
+
     if [[ -z "$summary" ]]; then
         error "Usage: mailbox complete <summary> [details] [deliverables]"
         exit 1
     fi
-    
-    # Create work completion envelope
-    local work_item
-    work_item=$(python3 -c "
-import json
-print(json.dumps({
-    'summary': '$summary',
-    'details': '${details:-$summary}',
-    'deliverables': '${deliverables}'.split(',') if '${deliverables}' else [],
-    'status': 'complete'
-}))
-")
-    
-    # Send to arbiter (using Python core with work type)
+
+    warn "Legacy wrapper: prefer structured response envelopes for new work."
+
+    # Compatibility wrapper only. This legacy skill still emits work_complete,
+    # but modern mailbox runtime should represent completion as:
+    # type=response, response_type=result, status=completed.
     python3 "$CORE_PY" --mailbox-root "$MAILBOX_ROOT" --agent "$MY_AGENT_ID" send arbiter "$summary" \
         --body "${details:-Work completed: $summary}" \
         --type "work_complete"
-    
-    success "Work completion announced: $summary"
+
+    success "Work completion announced (legacy wrapper): $summary"
 }
 
 # Archive old messages
