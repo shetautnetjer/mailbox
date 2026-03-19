@@ -12,6 +12,18 @@ NOTIFIER_MODES = {"none", "discover-only", "agent-turn-nudge"}
 TRACKER_SCHEMA_VERSION = "mailbox-tracker-v3"
 TRACKER_MIGRATION_VERSION = "mailbox-tracker-migration-v1"
 EVENT_SCHEMA_VERSION = "mailbox-event-v1"
+SEARCHABLE_STRUCTURED_FIELDS = (
+    "work_item_id",
+    "thread_id",
+    "event_family",
+    "state_class",
+    "trust_plane",
+)
+RECOMMENDED_SEARCH_TAGS = (
+    "comms/mailbox",
+    "comms/work-item-link",
+    "projects/mailbox-runtime",
+)
 
 DEFAULT_AGENT_NAMES = ["aya", "arbiter", "haiku", "heru", "jabari", "kimi", "tariq"]
 VALID_TYPES = {"task", "response"}
@@ -197,6 +209,22 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                yield payload
 
 
 def mailbox_event(
@@ -566,6 +594,86 @@ def normalized_tracker_view(tracker: dict[str, Any]) -> dict[str, Any]:
     if changed:
         view["migration_pending_write"] = True
     return view
+
+
+def normalized_tags(record: dict[str, Any]) -> list[str]:
+    tags = record.get("tags")
+    if not isinstance(tags, list):
+        return []
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for tag in tags:
+        value = str(tag).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def derived_project_ref(record: dict[str, Any]) -> str | None:
+    """Derived project retrieval alias, not a canonical stored field."""
+    work_item_id = record.get("work_item_id")
+    if work_item_id in (None, ""):
+        return None
+    return str(work_item_id)
+
+
+def normalized_search_view(
+    record: dict[str, Any],
+    *,
+    source_kind: str,
+    source_name: str,
+    source_path: Path | None = None,
+) -> dict[str, Any]:
+    if source_kind == "tracker":
+        normalized = normalized_tracker_view(record)
+    else:
+        normalized = dict(record)
+
+    view = dict(normalized)
+    view["tags"] = normalized_tags(normalized)
+    if source_kind == "tracker":
+        view["event_family"] = view.get("event_family") or "comms/delivery"
+        view["state_class"] = view.get("state_class") or "delivery_state"
+        view["trust_plane"] = view.get("trust_plane") or "plane-a"
+    view["project_ref"] = derived_project_ref(view)
+    view["source_kind"] = source_kind
+    view["source_name"] = source_name
+    if source_path is not None:
+        view["source_path"] = str(source_path)
+    return view
+
+
+def search_record_matches(
+    record: dict[str, Any],
+    *,
+    work_item_id: str | None = None,
+    thread_id: str | None = None,
+    project_ref: str | None = None,
+    event_family: str | None = None,
+    state_class: str | None = None,
+    trust_plane: str | None = None,
+    tag: str | None = None,
+    source_kind: str | None = None,
+) -> bool:
+    if work_item_id and record.get("work_item_id") != work_item_id:
+        return False
+    if thread_id and record.get("thread_id") != thread_id:
+        return False
+    if project_ref and record.get("project_ref") != project_ref:
+        return False
+    if event_family and record.get("event_family") != event_family:
+        return False
+    if state_class and record.get("state_class") != state_class:
+        return False
+    if trust_plane and record.get("trust_plane") != trust_plane:
+        return False
+    if tag and tag not in record.get("tags", []):
+        return False
+    if source_kind and record.get("source_kind") != source_kind:
+        return False
+    return True
 
 
 def best_effort_openclaw_ping(agent: str, message: str, openclaw_bin: str | None) -> bool:

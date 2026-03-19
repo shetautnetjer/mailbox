@@ -217,6 +217,41 @@ To count as registry-aligned enough for the next stage, mailbox runtime should a
 3. notify mode is explicit when live-assist logic is used
 4. status/reporting can summarize state using those distinctions
 
+## Operator retrieval surface
+
+Mailbox operator search/status should support exact-match retrieval over these structured fields:
+
+- `work_item_id`
+- `thread_id`
+- `event_family`
+- `state_class`
+- `trust_plane`
+- optional `tags[]`
+
+`tags[]` remain secondary annotations.
+They do not replace the structured fields above.
+
+### `project_id` decision
+
+Do not add a distinct canonical `project_id` field at this stage.
+
+Current mailbox data does not show a stable independent project semantic beyond `work_item_id`.
+For operator retrieval, a derived project-equivalent alias may be exposed, but it must be documented as:
+
+- derived from `work_item_id`
+- retrieval-only
+- not canonical duplication
+
+### Conservative tag guidance
+
+Only use tags where they add retrieval or governance value beyond the structured fields.
+Recommended conservative tags:
+
+- `comms/mailbox`
+- `comms/work-item-link`
+- `projects/mailbox-runtime`
+- specific `policy/*` tags only when policy routing/governance is materially involved
+
 ## Suggested implementation order
 
 1. update tracker schema

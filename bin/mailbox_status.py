@@ -5,14 +5,20 @@ import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from mailbox_core import (
     MailboxPaths,
+    RECOMMENDED_SEARCH_TAGS,
+    SEARCHABLE_STRUCTURED_FIELDS,
     SESSION_MAP,
+    iter_jsonl,
     normalized_tracker_view,
+    normalized_search_view,
     operator_live_notify_state,
     parse_iso,
     read_json,
+    search_record_matches,
 )
 from smart_mailman import SessionAwareMailman
 
@@ -129,11 +135,109 @@ def summarize_trackers(paths: MailboxPaths) -> dict:
     }
 
 
+def iter_operator_search_records(paths: MailboxPaths) -> Any:
+    for tracker_path in sorted(paths.tracking_dir.glob("*.json")):
+        try:
+            tracker = read_json(tracker_path)
+        except Exception:
+            continue
+        yield normalized_search_view(
+            tracker,
+            source_kind="tracker",
+            source_name=tracker_path.name,
+            source_path=tracker_path,
+        )
+
+    for ledger_path in sorted(paths.ledger.rglob("*.jsonl")):
+        for index, record in enumerate(iter_jsonl(ledger_path), start=1):
+            yield normalized_search_view(
+                record,
+                source_kind="event",
+                source_name=f"{ledger_path.name}:{index}",
+                source_path=ledger_path,
+            )
+
+
+def build_search_filters(args: argparse.Namespace) -> dict[str, str | None]:
+    return {
+        "work_item_id": args.work_item_id,
+        "thread_id": args.thread_id,
+        "project_ref": args.project_ref,
+        "event_family": args.event_family,
+        "state_class": args.state_class,
+        "trust_plane": args.trust_plane,
+        "tag": args.tag,
+        "source_kind": args.source_kind,
+    }
+
+
+def has_search_filters(filters: dict[str, str | None]) -> bool:
+    return any(value for value in filters.values())
+
+
+def search_mailbox(paths: MailboxPaths, filters: dict[str, str | None], limit: int) -> dict[str, Any]:
+    matches = []
+    source_counts: dict[str, int] = {}
+    total_matches = 0
+    for record in iter_operator_search_records(paths):
+        if not search_record_matches(record, **filters):
+            continue
+        total_matches += 1
+        source = record.get("source_kind", "unknown")
+        source_counts[source] = source_counts.get(source, 0) + 1
+        if len(matches) >= limit:
+            continue
+        matches.append(
+            {
+                "source_kind": record.get("source_kind"),
+                "source_name": record.get("source_name"),
+                "source_path": record.get("source_path"),
+                "event_type": record.get("event_type"),
+                "delivery_id": record.get("delivery_id"),
+                "envelope_id": record.get("envelope_id"),
+                "work_item_id": record.get("work_item_id"),
+                "thread_id": record.get("thread_id"),
+                "project_ref": record.get("project_ref"),
+                "event_family": record.get("event_family"),
+                "state_class": record.get("state_class"),
+                "trust_plane": record.get("trust_plane"),
+                "sender": record.get("sender"),
+                "recipient": record.get("recipient"),
+                "ack_state": record.get("ack_state"),
+                "delivery_state": record.get("delivery_state"),
+                "live_notify_state": record.get("live_notify_state"),
+                "tags": record.get("tags", []),
+                "ts": record.get("ts") or record.get("delivered_ts") or record.get("ack_ts"),
+            }
+        )
+
+    return {
+        "filters": filters,
+        "recommended_search_tags": list(RECOMMENDED_SEARCH_TAGS),
+        "structured_fields": list(SEARCHABLE_STRUCTURED_FIELDS),
+        "project_ref_policy": "derived_from_work_item_id_only",
+        "total_matches": total_matches,
+        "returned_matches": len(matches),
+        "truncated": total_matches > len(matches),
+        "source_counts": source_counts,
+        "matches": matches,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='Mailbox operator status view')
     parser.add_argument('--mailbox-dir', type=Path, default=DEFAULT_MAILBOX)
     parser.add_argument('--active-minutes', type=int, default=120)
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--work-item-id')
+    parser.add_argument('--thread-id')
+    parser.add_argument('--project-ref', help='Derived project-equivalent alias; currently equals work_item_id when present')
+    parser.add_argument('--event-family')
+    parser.add_argument('--state-class')
+    parser.add_argument('--trust-plane')
+    parser.add_argument('--tag')
+    parser.add_argument('--source-kind', choices=['tracker', 'event'])
+    parser.add_argument('--limit', type=int, default=20)
     args = parser.parse_args()
 
     paths = MailboxPaths(args.mailbox_dir)
@@ -165,6 +269,9 @@ def main() -> int:
         "recently_active_agents": recently_active,
         "known_agents": sorted(SESSION_MAP.keys()),
     }
+    search_filters = build_search_filters(args)
+    if has_search_filters(search_filters):
+        report["search"] = search_mailbox(paths, search_filters, limit=max(1, args.limit))
 
     if args.json:
         print(json.dumps(report, indent=2))
@@ -231,6 +338,28 @@ def main() -> int:
             print(f"  - {item['agent']} :: age_ms={item['age_ms']} kind={item['kind']}")
     else:
         print('  - none')
+
+    if report.get("search"):
+        search = report["search"]
+        print('\nStructured search:')
+        filters = {key: value for key, value in search["filters"].items() if value}
+        if filters:
+            print(f"  - filters: {json.dumps(filters, sort_keys=True)}")
+        print(f"  - project_ref_policy: {search['project_ref_policy']}")
+        print(f"  - matches: {search['returned_matches']}/{search['total_matches']}")
+        if search["source_counts"]:
+            print(f"  - by source: {json.dumps(search['source_counts'], sort_keys=True)}")
+        for item in search["matches"]:
+            print(
+                "  - "
+                f"{item['source_kind']} {item['source_name']} :: "
+                f"env={item['envelope_id'] or 'n/a'} :: "
+                f"work={item['work_item_id'] or 'n/a'} :: "
+                f"thread={item['thread_id'] or 'n/a'} :: "
+                f"family={item['event_family'] or 'n/a'} :: "
+                f"class={item['state_class'] or 'n/a'} :: "
+                f"plane={item['trust_plane'] or 'n/a'}"
+            )
     return 0
 
 
